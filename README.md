@@ -1,6 +1,6 @@
 # Autotranslate
 
-This is a wrapper on top of [go-i18n](github.com/nicksnyder/go-i18n).
+This is a wrapper on top of [go-i18n](https://github.com/nicksnyder/go-i18n).
 
 Given the default language and the languages to translate to, it will use your AI model of choice to generate the translations.
 
