@@ -43,38 +43,25 @@ func main() {
 		log.Fatal("output-dir flag is required")
 	}
 
-	var err error
 	var kit *genkit.Genkit
 	var model ai.Model
 
 	switch strings.ToLower(*provider) {
 	case "google":
-		kit, err = genkit.Init(ctx, genkit.WithPlugins(&googlegenai.GoogleAI{}))
-		if err != nil {
-			log.Fatal(err)
-		}
+		kit = genkit.Init(ctx, genkit.WithPlugins(&googlegenai.GoogleAI{}))
 		model = googlegenai.GoogleAIModel(kit, *modelName)
 	case "vertexai":
-		kit, err = genkit.Init(ctx, genkit.WithPlugins(&googlegenai.VertexAI{}))
-		if err != nil {
-			log.Fatal(err)
-		}
+		kit = genkit.Init(ctx, genkit.WithPlugins(&googlegenai.VertexAI{}))
 		model = googlegenai.VertexAIModel(kit, *modelName)
 	case "openai":
 		oai := &openai.OpenAI{}
-		kit, err = genkit.Init(ctx, genkit.WithPlugins(oai))
-		if err != nil {
-			log.Fatal(err)
-		}
+		kit = genkit.Init(ctx, genkit.WithPlugins(oai))
 		model = oai.Model(kit, *modelName)
 	case "anthropic":
 		claude := &anthropic.Anthropic{Opts: []option.RequestOption{
 			option.WithAPIKey(os.Getenv("ANTHROPIC_API_KEY")),
 		}}
-		kit, err = genkit.Init(ctx, genkit.WithPlugins(claude))
-		if err != nil {
-			log.Fatal(err)
-		}
+		kit = genkit.Init(ctx, genkit.WithPlugins(claude))
 		model = claude.Model(kit, *modelName)
 	default:
 		flag.Usage()
