@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"syscall"
 
@@ -217,13 +216,12 @@ func run(ctx context.Context, cmd string, args ...string) error {
 //go:embed system_prompt.md
 var systemPrompt string
 
-var messageTyp = reflect.TypeFor[Message]()
-
-func translate(ctx context.Context, g *genkit.Genkit, model ai.Model, lang, toTranslate string) ([]byte, error) {
-	current := map[string]Message{}
+func translate(ctx context.Context, g *genkit.Genkit, model ai.Model, lang string, toTranslate string) ([]byte, error) {
+	var current map[string]Message
 	if err := toml.Unmarshal([]byte(toTranslate), &current); err != nil {
-		return nil, fmt.Errorf("unmarshalling translation file: %w", err)
+		return nil, fmt.Errorf("unmarshalling current messages: %w", err)
 	}
+
 	translated := make(map[string]Message, len(current))
 
 	var i int
@@ -257,17 +255,45 @@ func translate(ctx context.Context, g *genkit.Genkit, model ai.Model, lang, toTr
 	return respToml, nil
 }
 
+// messageSchema is the JSON Schema for a Message object.
+// We define this manually to avoid genkit's recursive type detection bug
+// which produces schemas missing the 'type' field when the same struct type
+// appears multiple times in a dynamic struct.
+// See: https://github.com/firebase/genkit/issues/XXXX
+var messageSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"id":          map[string]any{"type": "string"},
+		"hash":        map[string]any{"type": "string"},
+		"description": map[string]any{"type": "string"},
+		"zero":        map[string]any{"type": "string"},
+		"one":         map[string]any{"type": "string"},
+		"two":         map[string]any{"type": "string"},
+		"few":         map[string]any{"type": "string"},
+		"many":        map[string]any{"type": "string"},
+		"other":       map[string]any{"type": "string"},
+	},
+	"additionalProperties": false,
+}
+
 func translateChunk(ctx context.Context, g *genkit.Genkit, model ai.Model, lang string, current map[string]Message) (map[string]Message, error) {
 	if len(current) == 0 {
 		return nil, nil // nothing to translate
 	}
 
-	fields := make([]reflect.StructField, 0, len(current))
+	// Build the output schema manually to work around genkit's recursive type bug.
+	// When using ai.WithOutputType() with a dynamic struct where multiple fields
+	// share the same type, genkit's InferJSONSchema marks repeated types as
+	// "already seen" and returns {"additionalProperties": true} without a "type"
+	// field. The Gemini plugin then rejects this schema.
+	properties := make(map[string]any, len(current))
 	for k := range current {
-		fields = append(fields, reflect.StructField{
-			Name: k,
-			Type: messageTyp,
-		})
+		properties[k] = messageSchema
+	}
+	outputSchema := map[string]any{
+		"type":                 "object",
+		"properties":           properties,
+		"additionalProperties": false,
 	}
 
 	marshalled, err := toml.Marshal(current)
@@ -279,7 +305,7 @@ func translateChunk(ctx context.Context, g *genkit.Genkit, model ai.Model, lang 
 		ctx, g,
 		ai.WithModel(model),
 		ai.WithSystem(systemPrompt),
-		ai.WithOutputType(reflect.New(reflect.StructOf(fields)).Interface()),
+		ai.WithOutputSchema(outputSchema),
 		ai.WithPrompt("Translate the following text to %s:\n\n%s", lang, string(marshalled)),
 	)
 	if err != nil {
